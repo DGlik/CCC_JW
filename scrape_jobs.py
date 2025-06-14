@@ -8,9 +8,9 @@ from playwright.async_api import async_playwright
 WORKDAY_URL = "https://foundationccc.wd1.myworkdayjobs.com/fccc-careers"
 SEEN_FILE = "seen_jobs.json"
 
-EMAIL_USER = os.environ.get("EMAIL_USERNAME")
-EMAIL_PASS = os.environ.get("EMAIL_PASSWORD")
-EMAIL_TO = EMAIL_USER  # you can change this if sending to someone else
+EMAIL_USER = os.environ.get("GMAIL_APP_LOGIN")
+EMAIL_PASS = os.environ.get("GMAIL_APP_PASS")
+EMAIL_TO = EMAIL_USER  # change this if you want to send to a different address
 
 
 def load_seen():
@@ -26,7 +26,7 @@ def save_seen(jobs):
 
 
 def send_email(new_jobs):
-    subject = f"New Job(s) Posted on FoundationCCC"
+    subject = "New FoundationCCC Job(s) Posted"
     body = "\n\n".join(new_jobs)
 
     msg = EmailMessage()
