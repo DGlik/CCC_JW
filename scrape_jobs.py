@@ -1,32 +1,45 @@
-import os
 import requests
+import os
+from bs4 import BeautifulSoup
 
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
 EMAIL_TO = os.getenv("EMAIL_TO")
+EMAIL_FROM = f"Job Scraper <mailgun@{MAILGUN_DOMAIN}>"
 
-def send_mailgun_email(new_jobs):
-    if not (MAILGUN_API_KEY and MAILGUN_DOMAIN and EMAIL_TO):
-        print("❌ Environment variables not loaded properly.")
-        print(f"MAILGUN_API_KEY: {bool(MAILGUN_API_KEY)}")
-        print(f"MAILGUN_DOMAIN: {MAILGUN_DOMAIN}")
-        print(f"EMAIL_TO: {EMAIL_TO}")
+WORKDAY_URL = "https://foundationccc.wd1.myworkdayjobs.com/fccc-careers"
+
+def scrape_jobs():
+    response = requests.get(WORKDAY_URL)
+    soup = BeautifulSoup(response.text, "html.parser")
+    job_links = []
+
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag["href"]
+        if href.startswith("/fccc-careers/job"):
+            full_url = f"https://foundationccc.wd1.myworkdayjobs.com{href}"
+            if full_url not in job_links:
+                job_links.append(full_url)
+
+    return job_links
+
+
+def send_email(job_links):
+    if not job_links:
+        print("✅ No new jobs found.")
         return
 
-    message = "\n".join(new_jobs)
-    print("🚨 New jobs found:")
-    print(message)
+    body = "🚨 New jobs found:\n\n" + "\n".join(job_links)
 
-    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
     response = requests.post(
-        url,
+        f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
         auth=("api", MAILGUN_API_KEY),
         data={
-            "from": f"Job Watcher <postmaster@{MAILGUN_DOMAIN}>",
+            "from": EMAIL_FROM,
             "to": EMAIL_TO,
-            "subject": "🚨 New jobs posted",
-            "text": message
-        }
+            "subject": "New Job Postings Found",
+            "text": body,
+        },
     )
 
     if response.status_code == 200:
@@ -36,10 +49,7 @@ def send_mailgun_email(new_jobs):
         print(response.text)
 
 
-# For testing only — mock job list
 if __name__ == "__main__":
-    mock_jobs = [
-        "https://example.com/job/123",
-        "https://example.com/job/456"
-    ]
-    send_mailgun_email(mock_jobs)
+    jobs = scrape_jobs()
+    print("🔍 Jobs scraped:", len(jobs))
+    send_email(jobs)
