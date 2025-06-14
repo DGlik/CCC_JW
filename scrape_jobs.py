@@ -1,6 +1,7 @@
-import requests
 import os
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+import requests
 
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
@@ -9,13 +10,21 @@ EMAIL_FROM = f"Job Scraper <mailgun@{MAILGUN_DOMAIN}>"
 
 WORKDAY_URL = "https://foundationccc.wd1.myworkdayjobs.com/fccc-careers"
 
+
 def scrape_jobs():
-    response = requests.get(WORKDAY_URL)
-    soup = BeautifulSoup(response.text, "html.parser")
+    # use Playwright to render dynamic content
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(WORKDAY_URL, wait_until="networkidle")
+        html = page.content()
+        browser.close()
+
+    soup = BeautifulSoup(html, "html.parser")
     job_links = []
 
-    for a_tag in soup.find_all("a", href=True):
-        href = a_tag["href"]
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
         if href.startswith("/fccc-careers/job"):
             full_url = f"https://foundationccc.wd1.myworkdayjobs.com{href}"
             if full_url not in job_links:
@@ -31,7 +40,7 @@ def send_email(job_links):
 
     body = "🚨 New jobs found:\n\n" + "\n".join(job_links)
 
-    response = requests.post(
+    resp = requests.post(
         f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
         auth=("api", MAILGUN_API_KEY),
         data={
@@ -42,11 +51,11 @@ def send_email(job_links):
         },
     )
 
-    if response.status_code == 200:
+    if resp.status_code == 200:
         print("✅ Email sent successfully via Mailgun.")
     else:
-        print(f"❌ Failed to send email. Status: {response.status_code}")
-        print(response.text)
+        print(f"❌ Failed to send email. Status: {resp.status_code}")
+        print(resp.text)
 
 
 if __name__ == "__main__":
