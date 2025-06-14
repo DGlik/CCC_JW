@@ -1,64 +1,82 @@
+import asyncio
 import os
-from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+import json
 import requests
-
-MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
-MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
-EMAIL_TO = os.getenv("EMAIL_TO")
-EMAIL_FROM = f"Job Scraper <mailgun@{MAILGUN_DOMAIN}>"
+from email.utils import formatdate
+from playwright.async_api import async_playwright
 
 WORKDAY_URL = "https://foundationccc.wd1.myworkdayjobs.com/fccc-careers"
+SEEN_FILE = "seen_jobs.json"
+
+MAILGUN_API_KEY = os.environ.get("MAILGUN_API_KEY")
+MAILGUN_DOMAIN = os.environ.get("MAILGUN_DOMAIN")
+EMAIL_TO = os.environ.get("EMAIL_TO")
+EMAIL_FROM = f"Job Bot <mailgun@{MAILGUN_DOMAIN}>"
 
 
-def scrape_jobs():
-    # use Playwright to render dynamic content
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(WORKDAY_URL, wait_until="networkidle")
-        html = page.content()
-        browser.close()
-
-    soup = BeautifulSoup(html, "html.parser")
-    job_links = []
-
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.startswith("/fccc-careers/job"):
-            full_url = f"https://foundationccc.wd1.myworkdayjobs.com{href}"
-            if full_url not in job_links:
-                job_links.append(full_url)
-
-    return job_links
+def load_seen():
+    if os.path.exists(SEEN_FILE):
+        with open(SEEN_FILE, "r") as f:
+            return json.load(f)
+    return []
 
 
-def send_email(job_links):
-    if not job_links:
-        print("✅ No new jobs found.")
-        return
+def save_seen(jobs):
+    with open(SEEN_FILE, "w") as f:
+        json.dump(jobs, f)
 
-    body = "🚨 New jobs found:\n\n" + "\n".join(job_links)
 
-    resp = requests.post(
+def send_email(new_jobs):
+    subject = f"[TopShot] New Job(s) Posted at FoundationCCC"
+    body = "\n\n".join(new_jobs)
+
+    data = {
+        "from": EMAIL_FROM,
+        "to": EMAIL_TO,
+        "subject": subject,
+        "text": f"New job listings:\n\n{body}",
+    }
+
+    response = requests.post(
         f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
         auth=("api", MAILGUN_API_KEY),
-        data={
-            "from": EMAIL_FROM,
-            "to": EMAIL_TO,
-            "subject": "New Job Postings Found",
-            "text": body,
-        },
+        data=data,
     )
 
-    if resp.status_code == 200:
-        print("✅ Email sent successfully via Mailgun.")
+    if response.status_code == 200:
+        print(f"✅ Email sent to {EMAIL_TO} with {len(new_jobs)} new job(s)")
     else:
-        print(f"❌ Failed to send email. Status: {resp.status_code}")
-        print(resp.text)
+        print(f"❌ Failed to send email. Status: {response.status_code}")
+        print(response.text)
+
+
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(WORKDAY_URL)
+        await page.wait_for_load_state("networkidle")
+
+        job_links = await page.eval_on_selector_all(
+            "a[href*='/fccc-careers/']", "els => els.map(e => e.href)"
+        )
+        await browser.close()
+
+        unique_links = sorted(set(job_links))
+        seen_links = load_seen()
+
+        new_jobs = [link for link in unique_links if link not in seen_links]
+
+        if new_jobs:
+            print("🚨 New jobs found:")
+            for job in new_jobs:
+                print(job)
+            send_email(new_jobs)
+        else:
+            print("✅ No new jobs found.")
+
+        save_seen(unique_links)
 
 
 if __name__ == "__main__":
-    jobs = scrape_jobs()
-    print("🔍 Jobs scraped:", len(jobs))
-    send_email(jobs)
+    asyncio.run(main())
