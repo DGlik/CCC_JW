@@ -2,7 +2,6 @@ import asyncio
 import os
 import json
 import requests
-from email.utils import formatdate
 from playwright.async_api import async_playwright
 
 WORKDAY_URL = "https://foundationccc.wd1.myworkdayjobs.com/fccc-careers"
@@ -11,7 +10,7 @@ SEEN_FILE = "seen_jobs.json"
 MAILGUN_API_KEY = os.environ.get("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.environ.get("MAILGUN_DOMAIN")
 EMAIL_TO = os.environ.get("EMAIL_TO")
-EMAIL_FROM = f"Job Bot <mailgun@{MAILGUN_DOMAIN}>"
+EMAIL_FROM = f"Job Bot <postmaster@{MAILGUN_DOMAIN}>"
 
 
 def load_seen():
@@ -44,7 +43,7 @@ def send_email(new_jobs):
     )
 
     if response.status_code == 200:
-        print(f"✅ Email sent to {EMAIL_TO} with {len(new_jobs)} new job(s)")
+        print(f"✅ Email sent to {EMAIL_TO} with {len(new_jobs)} job(s)")
     else:
         print(f"❌ Failed to send email. Status: {response.status_code}")
         print(response.text)
