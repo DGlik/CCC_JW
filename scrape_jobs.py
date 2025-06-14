@@ -1,16 +1,17 @@
 import asyncio
-import smtplib
 import os
 import json
-from email.message import EmailMessage
+import requests
+from email.utils import formatdate
 from playwright.async_api import async_playwright
 
 WORKDAY_URL = "https://foundationccc.wd1.myworkdayjobs.com/fccc-careers"
 SEEN_FILE = "seen_jobs.json"
 
-EMAIL_USER = os.environ.get("GMAIL_APP_LOGIN")
-EMAIL_PASS = os.environ.get("GMAIL_APP_PASS")
-EMAIL_TO = EMAIL_USER  # change this if you want to send to a different address
+MAILGUN_API_KEY = os.environ.get("MAILGUN_API_KEY")
+MAILGUN_DOMAIN = os.environ.get("MAILGUN_DOMAIN")
+EMAIL_TO = os.environ.get("EMAIL_TO")
+EMAIL_FROM = f"Job Bot <mailgun@{MAILGUN_DOMAIN}>"
 
 
 def load_seen():
@@ -26,20 +27,27 @@ def save_seen(jobs):
 
 
 def send_email(new_jobs):
-    subject = "New FoundationCCC Job(s) Posted"
+    subject = f"[TopShot] New Job(s) Posted at FoundationCCC"
     body = "\n\n".join(new_jobs)
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_USER
-    msg["To"] = EMAIL_TO
-    msg.set_content(f"New job listings:\n\n{body}")
+    data = {
+        "from": EMAIL_FROM,
+        "to": EMAIL_TO,
+        "subject": subject,
+        "text": f"New job listings:\n\n{body}",
+    }
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(EMAIL_USER, EMAIL_PASS)
-        smtp.send_message(msg)
+    response = requests.post(
+        f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
+        auth=("api", MAILGUN_API_KEY),
+        data=data,
+    )
 
-    print(f"✅ Email sent with {len(new_jobs)} job(s)")
+    if response.status_code == 200:
+        print(f"✅ Email sent to {EMAIL_TO} with {len(new_jobs)} new job(s)")
+    else:
+        print(f"❌ Failed to send email. Status: {response.status_code}")
+        print(response.text)
 
 
 async def main():
